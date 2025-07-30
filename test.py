@@ -38,7 +38,7 @@ from torchvision import transforms
 
 import compressai
 
-from src.zoo import load_state_dict, models
+from src.zoo import models
 
 torch.backends.cudnn.deterministic = True
 torch.set_num_threads(1)
@@ -119,7 +119,15 @@ def inference(model, x, filename, recon_path):
     )
 
     num_pixels = x.size(0) * x.size(2) * x.size(3)
-    bpp = sum(len(s[0]) for s in out_enc["strings"]) * 8.0 / num_pixels
+    total_bytes = 0
+    for s_list in out_enc["strings"]:
+        for item in s_list:
+            if isinstance(item, list):
+                for s in item:
+                    total_bytes += len(s)
+            else:
+                total_bytes += len(item)
+    bpp = total_bytes * 8.0 / num_pixels
 
     ps = psnr(x, out_dec["x_hat"])
     print(f"{filename}: bpp:{bpp}, psnr:{ps}")

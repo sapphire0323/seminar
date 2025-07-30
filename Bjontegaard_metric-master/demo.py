@@ -82,3 +82,27 @@ PSNR6 = np.array([27.9865, 30.83388, 33.85291, 37.05343])
 
 print('BD-PSNR: ', BD_PSNR(R5, PSNR5, R6, PSNR6, 1))
 print('BD-RATE: ', BD_RATE(R5, PSNR5, R6, PSNR6, 1))
+
+
+print('\nChannel_AR')
+R7 = np.array([
+    0.109,
+    0.184,
+    0.326,
+    0.489,
+    0.712,
+    0.877
+])
+PSNR7 = np.array([
+    27.632,
+    29.395,
+    31.553,
+    33.570,
+    35.525,
+    36.811
+])
+R8 = np.array([0.13361, 0.28637, 0.55066, 0.98743])
+PSNR8 = np.array([28.78062, 31.4402, 34.39043, 37.60767])
+
+print('BD-PSNR: ', BD_PSNR(R7, PSNR7, R8, PSNR8, 1))
+print('BD-RATE: ', BD_RATE(R7, PSNR7, R8, PSNR8, 1))
