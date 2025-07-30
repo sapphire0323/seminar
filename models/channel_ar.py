@@ -177,9 +177,73 @@ class Channel_AR(CompressionModel):
         super().load_state_dict(state_dict)
 
     def compress(self, x):
-        # TODO
-        return {"strings": [y_strings, z_strings], "shape": z.size()[-2:]}
+        y = self.g_a(x)
+        y_shape = y.shape[2:]
 
+        z = self.h_a(y)
+        z_strings = self.entropy_bottleneck.compress(z)
+        z_hat = self.entropy_bottleneck.decompress(z_strings, z.size()[-2:])
+
+        latent_scales = self.h_scale_s(z_hat)
+        latent_means = self.h_mean_s(z_hat)
+
+        y_slices = y.chunk(self.num_slices, 1)
+        y_hat_slices = []
+        y_strings = []
+
+        for slice_index, y_slice in enumerate(y_slices):
+            support_slices = (y_hat_slices if self.max_support_slices < 0 else y_hat_slices[:self.max_support_slices])
+            mean_support = torch.cat([latent_means] + support_slices, dim=1)
+            mu = self.cc_mean_transforms[slice_index](mean_support)
+            mu = mu[:, :, :y_shape[0], :y_shape[1]]
+
+            scale_support = torch.cat([latent_scales] + support_slices, dim=1)
+            scale = self.cc_scale_transforms[slice_index](scale_support)
+            scale = scale[:, :, :y_shape[0], :y_shape[1]]
+
+            y_hat_slice = torch.round(y_slice - mu) + mu
+
+            indexes = self.gaussian_conditional.build_indexes(scale)
+            y_string = self.gaussian_conditional.compress(y_slice - mu, indexes)
+            y_strings.append(y_string)
+
+            lrp_support = torch.cat([mean_support, y_hat_slice], dim=1)
+            lrp = self.lrp_transforms[slice_index](lrp_support)
+            lrp = 0.5 * torch.tanh(lrp)
+            y_hat_slice += lrp
+
+            y_hat_slices.append(y_hat_slice)
+
+        return {"strings": [y_strings, z_strings], "shape": z.size()[-2:]}
+    
     def decompress(self, strings, shape):
-        # TODO
+        y_strings, z_strings = strings
+        z_hat = self.entropy_bottleneck.decompress(z_strings, shape)
+
+        latent_scales = self.h_scale_s(z_hat)
+        latent_means = self.h_mean_s(z_hat)
+
+        y_hat_slices = []
+
+        for slice_index in range(self.num_slices):
+            support_slices = (y_hat_slices if self.max_support_slices < 0 else y_hat_slices[:self.max_support_slices])
+            mean_support = torch.cat([latent_means] + support_slices, dim=1)
+            mu = self.cc_mean_transforms[slice_index](mean_support)
+
+            scale_support = torch.cat([latent_scales] + support_slices, dim=1)
+            scale = self.cc_scale_transforms[slice_index](scale_support)
+
+            indexes = self.gaussian_conditional.build_indexes(scale)
+            y_hat_slice = self.gaussian_conditional.decompress(y_strings[slice_index], indexes) + mu
+
+            lrp_support = torch.cat([mean_support, y_hat_slice], dim=1)
+            lrp = self.lrp_transforms[slice_index](lrp_support)
+            lrp = 0.5 * torch.tanh(lrp)
+            y_hat_slice += lrp
+
+            y_hat_slices.append(y_hat_slice)
+
+        y_hat = torch.cat(y_hat_slices, dim=1)
+        x_hat = self.g_s(y_hat).clamp_(0, 1)
+        
         return {"x_hat": x_hat}
